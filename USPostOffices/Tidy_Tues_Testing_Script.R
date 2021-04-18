@@ -22,25 +22,6 @@ setwd(here::here())
 #Start by just ripping everything from this tutorial https://www.datanovia.com/en/blog/gganimate-how-to-create-plots-with-beautiful-animation-in-r/
 #install.packages('gganimate)
 
-head(gapminder)
-p <- ggplot(
-  gapminder, 
-  aes(x = gdpPercap, y=lifeExp, size = pop, colour = country)
-) +
-  geom_point(show.legend = FALSE, alpha = 0.7) +
-  scale_color_viridis_d() +
-  scale_size(range = c(2, 12)) +
-  scale_x_log10() +
-  labs(x = "GDP per capita", y = "Life expectancy")
-p
-class(gapminder$year)
-head(gapminder)
-p = p + transition_time(year) +
-  labs(title = "Year: {frame_time}")
-class(p)
-anim_save('file',p)
-gifski(list.files(pattern = '*.png'),delay = .1,loop = TRUE) #SO that was super easy
-
 MainStates <- map_data("state")
 
 
@@ -94,18 +75,16 @@ fordt[which(fordt$established>fordt$discontinued),] = swap_subset(fordt[which(fo
 
 
 fordt$established[which(is.na(fordt$established))] = min(fordt$established,na.rm = TRUE) #assume if NA its min, bad assumption
-fordt[fordt$id %in% sample(unique(fordt$id),20),]
+
 
 newdt = setDT(fordt)[ , list(latitude = latitude, longitude = longitude,Year = seq(established, discontinued, by = as.integer(1))), by = id]
 newdt = newdt[newdt$Year%%10== 0 & newdt$Year > 1800 ,]
-20%%10
-newdt$Year%%10
+#Garbage Cleanup to reduce memory for my super old laptop
 rm(cont_us)
 rm(postofficedata)
 rm(tuesdata)
 gc()
-tail(newdt)
-class(newdt$Year)
+
 newdt$Year = as.integer(newdt$Year)
 US = ggplot() + 
   geom_polygon( data=MainStates, aes(x=long, y=lat, group=group),

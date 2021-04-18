@@ -8,7 +8,7 @@ library(data.table)
 library(ggplot2)
 library(gganimate)
 library(tidyverse)
-###Webscrape census state stuff
+###Combining webscrape and Tidy Tuesday cleaning into a single script
 decades = seq(1810,2000,10) #census years
 url = 'https://en.wikipedia.org/wiki/1810_United_States_census'
 Poplevels = lapply(decades,function(X){
@@ -89,7 +89,7 @@ AllDecades$State = tolower(AllDecades$State) #make sure names match
 mergestates = left_join(NewMain,AllDecades,by =c('region'='State','Year'='Year') )
 mergestates$Year = as.integer(mergestates$Year)
 
-#Washington has a year Gap
+#Washington has a year Gap; should recalculate all 1860 but close enough :/
 mergestates$Population_Proportion[mergestates$region == 'washington' &
                                     mergestates$Year == 1860] = 
   mergestates$Population_Proportion[mergestates$region == 'washington' & 
@@ -103,13 +103,65 @@ postofficedata = tuesdata$post_offices
 cont_us = postofficedata[!(postofficedata$state %in% c('AK','HI')),]
 cont_us = cont_us[!is.na(cont_us$latitude),]
 
+cont_us$id = 1:length(cont_us$name)
+#Shrink the dataset, no need for extra columns
+fordt = cont_us[,c('established','discontinued','id','latitude','longitude')]
+
+#### Data Cleaning Section Clean established and Discontinued Years
+##RM bad chars 
+swap_subset = function(X){
+  #swapping discontinued and established when established > discontinued
+  disc = X$discontinued
+  X$discontinued = X$established
+  X$established = disc
+  return(X)
+}
+year_cleaner = function(X){
+        #Clean the years to 4 digits and ensuring established< discontinued
+            X[which(nchar(as.character(X$discontinued)) != 4),] #Trim the 5s, add 1 to the 3
+            X[which(nchar(as.character(X$discontinued)) == 5),2]= as.integer(
+              substr(
+                as.character(
+                  as.data.frame(
+                    X[which(nchar(as.character(X$discontinued)) == 5),])[,2]),1,4))
+            X[which(nchar(as.character(X$discontinued)) != 4),]$discontinued = as.integer(paste('1',X[which(nchar(as.character(X$discontinued)) != 4),]$discontinued,sep = '') )
+            # Discontinueds cleaned :)
+            
+            X[which(nchar(as.character(X$established)) != 4),]$established = as.integer(paste(X[which(nchar(as.character(X$established)) != 4),]$established,'0',sep = '')) # Add 0s to all of these. 
+            
+            X[which(X$established>X$discontinued),]# SWAP these after cleaning the above
+            
+            X$discontinued = ifelse(is.na(X$discontinued),max(X$discontinued,na.rm = T),X$discontinued)
+            X[which(X$established>X$discontinued),] = swap_subset(X[which(X$established>X$discontinued),])
+            
+            
+            
+            
+            X$established[which(is.na(X$established))] = min(X$established,na.rm = TRUE) #assume if NA its min, bad assumption
+            
+            return(X)
+            }
+fordt = year_cleaner(fordt)
+newdt = setDT(fordt)[ , list(latitude = latitude, longitude = longitude,Year = seq(established, discontinued, by = as.integer(1))), by = id]
+newdt = newdt[newdt$Year%%10== 0 & newdt$Year > 1800 ,] #Get only 10 year increments
+#Garbage Cleanup to reduce memory for my super old laptop
+rm(cont_us)
+rm(postofficedata)
+rm(tuesdata)
+gc()
+
+newdt$Year = as.integer(newdt$Year)
+
 
 
 
 US = ggplot() + 
   geom_polygon( data=mergestates, aes(x=longitude, y=latitude, group=group,fill = Population_Proportion),
                 color="black" )+ 
-  scale_fill_viridis_c(option = "C",na.value = 'black',  breaks = 0.02*0:9, labels = percent( 0.02*0:9))+
+  scale_fill_viridis_c(option = "C",
+                       na.value = 'black', 
+                       breaks = c(0.02*0:9,max(mergestates$Population_Proportion,na.rm = T))
+                       , labels = percent(c(0.02*0:9,max(mergestates$Population_Proportion,na.rm = T))))+
   theme_void() +  geom_point(data =newdt,aes(x =longitude,y=latitude)
                               ,color = 'white',size = .03,alpha =.1)  +
   guides(fill=guide_legend(title="Percentage of US Population"))
@@ -119,4 +171,4 @@ US = US + transition_states(Year) +
   labs(title = "Post Office Locations Plotted over Census Population in Year: {closest_state}")
 
 animate(US, height = 450, width =700,fps = 4)
-anim_save('')
+anim_save('Post_Office_Pop.gif')
